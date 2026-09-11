@@ -122,6 +122,13 @@ synthesis.md, then fill templates/video-script.md and templates/reel-script.md. 
 an S-id or F-id inline and appears in the Claims register with its url. The personal-angle field is ALWAYS a
 [YUGANSH: ...] placeholder with a specific prompt — never invented data.
 
+Language ratio for EVERY spoken line (video and reels): default to English sentence structure carrying the
+claim/number/explanation; Hindi appears only as a short word or tag (bhai, yaar, matlab, seedhi baat, sach mein)
+dropped into an English sentence, never as a full Hindi clause. Target ~80% English / ~20% Hindi by word count.
+This matters MOST in reels — they're short enough that one Hindi clause can flip the whole script's ratio, so
+before writing a reel's spoken lines, re-read channel/voice.md's sample lines and match that register exactly,
+not the heavier Hindi you may have seen in older drafts.
+
 For REVISE: you receive the fact-checker's required fixes. Fix exactly those. If a claim cannot be sourced, rewrite it
 as clearly-labelled opinion or cut it; do not search harder for a number that may not exist."""
 

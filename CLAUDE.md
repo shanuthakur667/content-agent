@@ -15,9 +15,13 @@ This file is the persistent "channel facts" block. It is loaded into every sessi
 
 ## Language
 
-- Natural Hinglish: roughly 80% English, 20% Hindi, the way an Indian runner actually talks to a friend. Hindi in Roman script (never Devanagari).
+- Natural Hinglish: roughly 80% English, 20% Hindi (reels especially — see `channel/voice.md` for the exact
+  bar and a self-check, since reels are short enough that the ratio must hold within one script, not
+  just average out over a longer video). Hindi in Roman script (never Devanagari).
 - Technical terms stay English: VO2max, zone 2, carbon plate, RPE, progressive overload, DNF.
-- Hindi carries emotion and emphasis, not information: "bhai yeh insaan hai ya machine?", "seedhi baat", "matlab", "yaar", "sach bolu toh".
+- Hindi is short seasoning dropped into English sentences — a word or a tag ("bhai", "seedhi baat",
+  "matlab", "yaar", "sach bolu toh") — never a full Hindi clause that carries the claim, number, or
+  explanation itself. If you strip out the Hindi words, the sentence must still read as complete English.
 - Never force it. If a line reads better in pure English, keep it English.
 
 ## Formats

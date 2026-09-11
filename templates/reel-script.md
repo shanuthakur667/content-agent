@@ -11,7 +11,9 @@ sources_used: {url: values from research/<week>/ — required for any Tier-1 cla
 {One specific line. Cite [Fx] if it's a fact.}
 
 ## Spoken lines (≈70-120 words total)
-{Hinglish where natural. Short sentences. One idea only.}
+{English sentences carrying the claim/explanation, with short Hindi seasoning words dropped in
+(bhai, yaar, matlab, seedhi baat, sach mein) — not full Hindi clauses. Target ~8 in 10 words English.
+Short sentences. One idea only. See channel/voice.md for the self-check.}
 
 ## On-screen text (max 5 cards, ≤6 words each)
 1. 
