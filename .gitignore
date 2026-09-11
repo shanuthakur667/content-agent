@@ -1,6 +1,13 @@
 .venv/
 .env
+.env.*
+!.env.example
 __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+node_modules/
+
+# weekly generated content, not team code
+content/
+research/
