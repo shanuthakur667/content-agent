@@ -14,12 +14,14 @@ from .config import (
     SCOUT_MAX_BUDGET_USD,
     SCOUT_MAX_TURNS,
     SCOUT_MODEL,
+    X_BEAT,
     content_dir,
     research_dir,
 )
 from .hooks import final_gate, make_scope_guard, report_validate, scout_validate
-from .prompts import CHECKER_PROMPT, DAILY_PROMPT, EDITOR_SYSTEM_APPEND, RESEARCHER_PROMPT, scout_system_prompt
+from .prompts import CHECKER_PROMPT, DAILY_PROMPT, RESEARCHER_PROMPT, editor_system_append, scout_system_prompt
 from .tools import CHANNEL_MEMORY_TOOLS, SERVER_NAME, channel_memory_server
+from .x_tools import X_SERVER_NAME, X_TOOLS, x_trends_server
 
 
 def _alias(model_id: str) -> str:
@@ -32,14 +34,20 @@ def _alias(model_id: str) -> str:
 
 def scout_options(beat: str, week: str) -> ClaudeAgentOptions:
     rd = research_dir(week)
+    tools = ["WebSearch", "WebFetch", "Read", "Write"]
+    mcp_servers: dict = {}
+    if beat == X_BEAT:
+        tools += X_TOOLS
+        mcp_servers[X_SERVER_NAME] = x_trends_server()
     return ClaudeAgentOptions(
         system_prompt=scout_system_prompt(beat, week),
-        allowed_tools=["WebSearch", "WebFetch", "Read", "Write"],
+        allowed_tools=tools,
         permission_mode="dontAsk",
         cwd=PROJECT_ROOT,
         model=SCOUT_MODEL,
         max_turns=SCOUT_MAX_TURNS,
         max_budget_usd=SCOUT_MAX_BUDGET_USD,
+        mcp_servers=mcp_servers,
         hooks={
             "PreToolUse": [HookMatcher(matcher="Write|Edit", hooks=[make_scope_guard([(rd, f"scout-{beat}.md")])])],
             "PostToolUse": [HookMatcher(matcher="Write|Edit", hooks=[scout_validate])],
@@ -47,7 +55,7 @@ def scout_options(beat: str, week: str) -> ClaudeAgentOptions:
     )
 
 
-def editor_options(week: str) -> ClaudeAgentOptions:
+def editor_options(week: str, x_enabled: bool = False) -> ClaudeAgentOptions:
     rd, cd = research_dir(week), content_dir(week)
     scope = make_scope_guard([
         (rd, "candidates.md"),
@@ -56,7 +64,7 @@ def editor_options(week: str) -> ClaudeAgentOptions:
         (cd, "FINAL-*.md"),
     ])
     return ClaudeAgentOptions(
-        system_prompt={"type": "preset", "preset": "claude_code", "append": EDITOR_SYSTEM_APPEND},
+        system_prompt={"type": "preset", "preset": "claude_code", "append": editor_system_append(x_enabled)},
         setting_sources=["project"],
         allowed_tools=["Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch", "Agent", *CHANNEL_MEMORY_TOOLS],
         permission_mode="dontAsk",

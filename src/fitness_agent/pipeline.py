@@ -16,17 +16,19 @@ from claude_agent_sdk import (
     query,
 )
 
-from . import store
+from . import store, x_tools
 from .agents import checker_options, daily_options, editor_options, scout_options
 from .config import (
     CHECKER_CONCURRENCY,
     FACTCHECK_MAX_RETRIES,
     PROJECT_ROOT,
-    SCOUT_BEATS,
     SCOUT_MODEL,
+    X_MAX_API_CALLS,
+    X_TRENDS_ENABLED,
     content_dir,
     rel,
     research_dir,
+    scout_beats,
 )
 from .hooks import gate_check, report_path_for
 from .prompts import checker_task, daily_pick_task, rank_task, revise_task, scout_task, write_task
@@ -99,14 +101,14 @@ async def drain(client: ClaudeSDKClient, label: str) -> RunResult:
     return result
 
 
-async def run_scouts(week: str) -> dict[str, str]:
+async def run_scouts(week: str, beats: tuple[str, ...]) -> dict[str, str]:
     rd = research_dir(week)
     results = await asyncio.gather(
-        *(run_query(scout_task(beat, week), scout_options(beat, week), beat) for beat in SCOUT_BEATS),
+        *(run_query(scout_task(beat, week), scout_options(beat, week), beat) for beat in beats),
         return_exceptions=True,
     )
     statuses: dict[str, str] = {}
-    for beat, res in zip(SCOUT_BEATS, results):
+    for beat, res in zip(beats, results):
         path = rd / f"scout-{beat}.md"
         if isinstance(res, BaseException):
             statuses[beat] = f"crashed: {res}"
@@ -213,15 +215,19 @@ async def factcheck_loop(week: str, editor: ClaudeSDKClient, drafts: list[Path])
     return passed, list(failed)
 
 
-async def run_weekly(week: str, auto: bool, topic_index: int | None, stop_at: str) -> None:
-    _log("weekly", f"week {week} — stage A: trend scouts ({len(SCOUT_BEATS)} in parallel)")
-    statuses = await run_scouts(week)
+async def run_weekly(week: str, auto: bool, topic_index: int | None, stop_at: str,
+                     x_enabled: bool | None = None) -> None:
+    x_on = X_TRENDS_ENABLED if x_enabled is None else x_enabled
+    beats = scout_beats(x_on)
+    x_note = f", X trends ON (max {X_MAX_API_CALLS} billable calls)" if x_on else ", X trends off"
+    _log("weekly", f"week {week} — stage A: trend scouts ({len(beats)} in parallel{x_note})")
+    statuses = await run_scouts(week, beats)
     if all(s.startswith(("crashed", "missing")) for s in statuses.values()):
         raise SystemExit("all scouts failed — check ANTHROPIC_API_KEY and network, then re-run")
 
     _log("weekly", "stage B: editor session")
-    async with ClaudeSDKClient(options=editor_options(week)) as editor:
-        await editor.query(rank_task(week))
+    async with ClaudeSDKClient(options=editor_options(week, x_on)) as editor:
+        await editor.query(rank_task(week, beats))
         await drain(editor, "editor")
         candidates_path = research_dir(week) / "candidates.md"
         if not candidates_path.exists():
@@ -241,6 +247,8 @@ async def run_weekly(week: str, auto: bool, topic_index: int | None, stop_at: st
             store.append_calendar(_entry(week, d, chosen.title, "draft"))
         _log("weekly", f"{len(drafts)} drafts in {rel(content_dir(week))}/")
         if stop_at == "draft":
+            if x_on:
+                _log("weekly", f"X usage: {x_tools.ledger_summary()}")
             _log("weekly", "stopped at draft stage — review the drafts, then `python run.py check` to fact-check them")
             return
 
@@ -248,6 +256,8 @@ async def run_weekly(week: str, auto: bool, topic_index: int | None, stop_at: st
         passed, failed = await factcheck_loop(week, editor, drafts)
 
     _log("weekly", f"fact-check: {len(passed)} PASS, {len(failed)} FAIL")
+    if x_on:
+        _log("weekly", f"X usage: {x_tools.ledger_summary()}")
     _log("weekly", f"next: read {rel(content_dir(week))}/DRAFT-*.md, fill the [YUGANSH: ...] fields, then `python run.py finalize`")
 
 
@@ -256,7 +266,7 @@ async def run_check(week: str) -> None:
     if not drafts:
         raise SystemExit(f"no drafts in {rel(content_dir(week))} — run `python run.py weekly` first")
     _log("check", f"fact-checking {len(drafts)} draft(s) for {week}")
-    async with ClaudeSDKClient(options=editor_options(week)) as editor:
+    async with ClaudeSDKClient(options=editor_options(week, X_TRENDS_ENABLED)) as editor:
         passed, failed = await factcheck_loop(week, editor, drafts)
     _log("check", f"{len(passed)} PASS, {len(failed)} FAIL")
     if not failed:
@@ -328,4 +338,12 @@ async def doctor() -> None:
     )
     search_ok = "WebSearch" in search.tool_calls and not search.is_error and bool(search.text.strip())
     print(f"websearch : {'ok — ' + search.text.strip()[:120] if search_ok else 'FAILED — ' + (search.text[:300] or 'no WebSearch call happened')}")
-    print(f"cost      : ${auth.cost_usd + search.cost_usd:.3f}")
+
+    if X_TRENDS_ENABLED:
+        x_ok, x_msg = await x_tools.probe()
+        print(f"x-trends  : {'ok — ' + x_msg if x_ok else 'FAILED — ' + x_msg}")
+        print(f"x usage   : {x_tools.ledger_summary()}")
+    else:
+        print("x-trends  : disabled (X_TRENDS_ENABLED=false) — pipeline runs on the 4 web-based beats")
+
+    print(f"claude cost: ${auth.cost_usd + search.cost_usd:.3f}")

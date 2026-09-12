@@ -9,8 +9,9 @@ Every week it researches what's actually trending in running/strength/hybrid rac
 ```
 python run.py weekly
   │
-  ├─ Stage A — 4 trend scouts run in parallel, each in its own isolated context:
+  ├─ Stage A — trend scouts run in parallel, each in its own isolated context:
   │    events-news · discourse · science-gear · competitor
+  │    (+ x-trends, only when the X feature flag is on — see below)
   │    → research/<week>/scout-<beat>.md  (claim + source url + date, validated by a hook)
   │
   ├─ Stage B — one "editor" session:
@@ -65,6 +66,42 @@ python run.py daily                    # pick today's reel from the week's bank
 python run.py weekly --auto            # full run, no prompts, top-ranked topic
 ```
 
+## X (Twitter) trending signal — optional, off by default
+
+WebSearch ranks by authority, not by what's spiking today, so "trending" in the default setup is a best-effort
+guess. The X integration replaces that guess with measured spike data. It's behind a feature flag so the pipeline
+has no dependency on it and costs nothing when off.
+
+```bash
+# .env
+X_TRENDS_ENABLED=true
+X_BEARER_TOKEN=<app-only bearer from the X Developer Console>
+```
+```bash
+python run.py weekly --x      # force on for one run, ignoring .env
+python run.py weekly --no-x   # force off for one run (zero billable X calls)
+python run.py doctor          # reports whether X is reachable, or that it's disabled
+```
+
+**Off** — the original four web-based beats, exactly as before. **On** — adds a fifth `x-trends` scout with two
+tools (`get_x_trends`, `search_x_posts`) writing `research/<week>/scout-x-trends.md`, and the ranker is told to use
+that as its `trend_velocity` evidence.
+
+Three things worth knowing:
+
+- **Trending ≠ true.** The x-trends scout's job is discovery, not verification. A finding's `claim` describes what
+  is *spiking*, and any factual assertion inside it must be re-sourced to a real outlet or flagged UNVERIFIED. The
+  deep-researcher is forbidden from carrying a social URL into the claim-source map, and the fact-checker rejects
+  any Tier-1 claim whose only citation is a social/forum post. A trend tells you what to look into, nothing more.
+- **Spending is capped in code, not by asking the model nicely.** X bills trends per request ($0.010) and search
+  **per post returned** ($0.005 each — a 100-result search is $0.50). `X_MAX_SPEND_USD` and `X_MAX_API_CALLS` are
+  checked before every call, worst-case-first, and the tool returns a structured "stop calling" error at the
+  ceiling. Typical weekly usage is a few cents. Author identities are deliberately not returned.
+- **Credentials.** A static app-only Bearer token — no OAuth consent, no refresh, so it works from cron. The app
+  must be attached to a Project in the X console or v2 calls 403, and there's no free tier, so the balance needs
+  funding. `X_TRENDS_WOEIDS` defaults to `1,23424848` (Worldwide, India); the India WOEID isn't in X's published
+  table, so if it 404s, drop it and keep `1`.
+
 ## Project layout
 
 ```
@@ -79,6 +116,7 @@ src/fitness_agent/
   prompts.py                   every agent's system prompt and per-task instructions
   agents.py                    ClaudeAgentOptions + AgentDefinition for each agent role
   tools.py                     the in-process `channel-memory` MCP server
+  x_tools.py                   the in-process `x-trends` MCP server (X REST v2 + spend caps), flag-gated
   hooks.py                     scope_guard, scout_validate, final_gate — the enforcement layer
   pipeline.py                  stage orchestration (the fixed pipeline itself)
   store.py                     parsing/validation for the markdown file formats
@@ -89,9 +127,12 @@ src/fitness_agent/
 
 ## Current scope / roadmap
 
-**Phase 1 (this repo, on-demand)** — WebSearch/WebFetch only for trend detection; no Reddit/YouTube API yet, so "trending" is a best-effort search-engine signal, strongest in the discourse (forum) beat.
+**Phase 1 (this repo, on-demand)** — four web-based beats via WebSearch/WebFetch, plus the optional X trends beat
+above. Without X, "trending" is a best-effort search-engine signal, strongest in the discourse (forum) beat.
 
-**Phase 2 (planned)** — real Reddit API and YouTube Data API MCP servers for an actual trend/velocity signal instead of generic web search; requires Node and per-service API approval.
+**Phase 2 (planned)** — Reddit API for deeper community-discourse signal (free for non-commercial use, but new
+OAuth clients need manual approval, ~1-4 weeks), and YouTube Data API for real competitor view velocity instead of
+search snippets.
 
 **Phase 3 (planned)** — scheduled runs (`weekly --auto --stop-at draft` on a timer) instead of on-demand.
 

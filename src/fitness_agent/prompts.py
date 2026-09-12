@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date, timedelta
 
-from .config import SCOUT_BEATS
+from .config import BASE_SCOUT_BEATS
 
 BEAT_BRIEFS = {
     "events-news": """\
@@ -35,6 +36,38 @@ The Running Channel, Ben Parkes, Göran Winblad, Stephen Scullion, Kofuzi, Seth 
 Fergus Crawley, Sage Canaday, Hybrid Calisthenics-style hybrid creators, and any Indian running/fitness channel
 you find covering these topics. youtube.com pages often don't fetch — search-result snippets are acceptable evidence
 for title + date; say so in the excerpt. why_it_matters = "5+ channels covered X" or "nobody covered Y".""",
+    "x-trends": """\
+Beat: X TRENDS — what is SPIKING on X (Twitter) right now in running / endurance / strength / hybrid sport.
+You have two X tools: `get_x_trends` (what is trending, by location, with post counts) and `search_x_posts`
+(recent posts with like/repost/reply counts). This is the only beat with access to real velocity data — the other
+beats infer "hot" from search engines; you can actually measure it.
+
+Your job is DISCOVERY, not verification. You are finding leads for the editor, and you must be ruthlessly honest
+about which parts are verified and which are just "lots of people are saying this".
+
+Method:
+1. Pull the trends lists first. Most entries will be politics/entertainment/memes — ignore them. You are only
+   interested in anything touching running, marathons, ultras, triathlon/Ironman, HYROX/hybrid, lifting, sports
+   science, running shoes/gear, or a named endurance athlete.
+2. If the trends lists contain nothing relevant (common — this is a niche in a general-purpose trend list), do a
+   recent-post search on the niche's own vocabulary instead: marathon, HYROX, Ironman, ultramarathon, world record
+   + running, super shoes, plus any athlete or race in the next two weeks. Use engagement metrics (likes, reposts,
+   replies) to judge what is actually spiking rather than what merely exists.
+3. For each relevant spike, write a finding. `claim` describes WHAT IS SPIKING and how much
+   ("X is trending in India / a post claiming Y has N thousand reposts"), not the underlying factual assertion.
+4. THEN, for any factual assertion inside a spike (a record, a time, a result, a signing, a ban), do ONE
+   WebSearch/WebFetch to find a real non-X source, and write that as a SEPARATE finding with the real url.
+   If you cannot find a real source, still report the spike, but set confidence: low and say plainly in
+   why_it_matters that the underlying claim is UNVERIFIED and rests only on social posts.
+5. Never name or identifiably quote private individuals. Official org and public-athlete accounts are fine to name.
+
+X API calls cost real money and are hard-capped in code: `get_x_trends` is billed per call, and `search_x_posts`
+is billed PER POST RETURNED — so keep max_results small (10 is usually plenty) and make every query count. Start
+with one trends sweep, then at most a few targeted searches. If a tool returns isError with a cap or rate-limit
+message, stop calling X entirely, note it in status_note, and write up what you already have — a partial report
+with honest gaps is the correct outcome, never a reason to fail.
+
+Trending is not the same as true, and not the same as relevant to this channel. Say which is which in every finding.""",
 }
 
 
@@ -58,7 +91,8 @@ Time window: {start} to {end} (week {week}). Today is {end}. Put date tokens in 
 Method (goal, not a script):
 1. Read templates/scout-finding.md first and follow its format EXACTLY — code parses it.
 2. Search broadly, then WebFetch the actual pages for anything you intend to cite. The `excerpt` must be verbatim
-   from the fetched page (max 40 words, in quotes). The `url` must be the page you read, not a homepage.
+   from the source you actually read — a fetched page, or a tool result (max 40 words, in quotes). The `url` must
+   point at that specific source, not a homepage.
 3. Write 5-12 findings to research/{week}/scout-{beat}.md. Fewer is fine if that's the honest picture. Never pad.
 4. Set `status: ok` if you found things, `status: no-news` if searches ran and this beat was genuinely quiet,
    `status: search-failed` if tools errored. These mean different things; do not confuse them.
@@ -85,11 +119,37 @@ Write research/<week>/synthesis.md with exactly these sections:
 ## Angles for a runner-who-lifts — 3-5 concrete angles, each pointing to the S-ids that support it.
 ## Indian angle — anything local (Indian athletes, events, conditions, prices) or "none found".
 
+Social sources: a scout finding whose url is an x.com / twitter.com / reddit.com / forum page tells you what is
+being DISCUSSED, not what is true. Never carry such a url into the Claim-source map as the source for a number,
+time, record, date, or result — go find the real source (official body, organiser, journal, established outlet)
+and cite that instead. If the real source does not exist, the claim belongs in Coverage gaps marked UNVERIFIED,
+not in the claim map. A topic arriving from the x-trends beat is a lead to check, never a fact to repeat.
+
 Rules: write only research/<week>/synthesis.md. Preserve metadata (url, date) on every claim — attribution that
 dies here cannot be recovered later. Your final reply: ≤200 words, the path plus the three most script-worthy facts."""
 
 
-EDITOR_SYSTEM_APPEND = """\
+X_RANK_APPEND = """\
+
+X TRENDS SIGNAL (this run has it — research/<week>/scout-x-trends.md exists):
+- Treat the x-trends findings as the best available evidence for `trend_velocity`. It is measured spike data
+  (engagement counts, trend-list membership) rather than the search-engine-authority proxy the other beats rely on,
+  so let it dominate that one sub-score where it has something to say. Say in `why` which XT- finding drove it.
+- It does NOT change any other sub-score. Something spiking hard but only loosely connected to running/strength
+  still scores low on `niche_fit`, and a global trend with no hybrid-athlete angle is not a candidate at all.
+- A spike is a LEAD, not a fact. If a candidate's central claim is currently sourced only to X posts, you may still
+  rank it, but its `hook` line must end with "(UNVERIFIED — needs a real source)" so the WRITE stage knows the
+  deep-researcher has to confirm it before a single number reaches a script. If research later cannot confirm it,
+  the topic gets rewritten around what IS verifiable, or dropped.
+- Absence of X findings is not a failure: if scout-x-trends.md says no-news, or the niche simply was not trending,
+  rank exactly as you would without it, using the other four beats."""
+
+
+def editor_system_append(x_enabled: bool = False) -> str:
+    return _EDITOR_SYSTEM_APPEND + (X_RANK_APPEND if x_enabled else "")
+
+
+_EDITOR_SYSTEM_APPEND = """\
 You are the head of content for this channel. The channel brief (CLAUDE.md) is loaded and binding.
 
 You work in stages driven by the user's messages: RANK, then WRITE, then possibly REVISE. In every stage you may
@@ -146,6 +206,13 @@ For every Tier-1 claim: find the cited url. If the excerpt in the research files
 spoken, mark verified. If not, WebFetch the url yourself. If it still doesn't support it, mark unsupported;
 if no url is cited, mark unsourced; if the source says otherwise, mark contradicted.
 
+Social-media sourcing rule (applies always): an x.com / twitter.com / reddit.com / forum URL is evidence of what
+someone SAID or of what is being discussed — it is NEVER sufficient on its own to verify a Tier-1 factual claim
+(a number, time, record, date, result, or health/legal claim). If a Tier-1 claim's only citation is a social or
+forum post, mark it unsupported and require a real source (official body, race organiser, journal, established
+outlet), UNLESS the post is a first-party official announcement from the organisation or athlete it concerns —
+and even then note in the report that it is uncorroborated. Trending on social media is not evidence of being true.
+
 Then run the risk-rule check and the format check from the template.
 
 Write research/<week>/fact-check-<draft-file-stem>.md following the template EXACTLY, including the literal line
@@ -159,8 +226,8 @@ def scout_task(beat: str, week: str) -> str:
             f"write research/{week}/scout-{beat}.md, then reply with the path, status, and beat summary.")
 
 
-def rank_task(week: str) -> str:
-    files = ", ".join(f"research/{week}/scout-{b}.md" for b in SCOUT_BEATS)
+def rank_task(week: str, beats: Sequence[str] = BASE_SCOUT_BEATS) -> str:
+    files = ", ".join(f"research/{week}/scout-{b}.md" for b in beats)
     return (f"RANK stage for week {week}. Read the scout files ({files}), call the channel-memory tools, "
             f"apply the rubric, and write research/{week}/candidates.md with 5 candidates. "
             f"Reply with only the top 3 titles and scores.")
